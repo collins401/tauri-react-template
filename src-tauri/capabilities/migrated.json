@@ -1,0 +1,22 @@
+{
+  "identifier": "migrated",
+  "description": "permissions that were migrated from v1",
+  "local": true,
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "process:default",
+    "shell:default",
+    "dialog:default",
+    "upload:default",
+    "updater:default",
+    "os:default",
+    "os:allow-hostname",
+    "store:default",
+    "notification:default",
+    {
+      "identifier": "http:default",
+      "allow": [{ "url": "https://**" }, { "url": "http://**" }]
+    }
+  ]
+}

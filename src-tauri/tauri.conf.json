@@ -1,0 +1,50 @@
+{
+  "build": {
+    "beforeDevCommand": "bun dev",
+    "beforeBuildCommand": "bun run build",
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420"
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "productName": "tauri-react-template",
+  "version": "0.0.7",
+  "identifier": "com.deepsky.tauri-app",
+  "plugins": {
+    "process": {
+      "active": true
+    },
+    "updater": {
+      "endpoints": ["https://tauri-updater.deepsky.top/update.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXkgQjgyREYyOUNGRjdGOTUwMwpSV1FEbFgvL25QSXR1RnZLZHdIOExraWczRUc5dEVoRnFoVjBLaW45bmhzY0NtYXhWeVlYVjJZYwo=",
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "app": {
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "title": "Tauri App",
+        "width": 1000,
+        "height": 600,
+        "minWidth": 700,
+        "minHeight": 480,
+        "dragDropEnabled": false,
+        "titleBarStyle": "Overlay"
+      }
+    ]
+  }
+}

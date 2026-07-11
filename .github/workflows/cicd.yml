@@ -1,0 +1,109 @@
+name: CI - Build Tauri App
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      CI: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install pnpm dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build Tauri app
+        run: pnpm tauri build
+
+      - name: Package for updater (Windows)
+        shell: bash
+        run: |
+          VERSION=$(node -e "process.stdout.write(require('./src-tauri/tauri.conf.json').version)")
+          APP_NAME=$(node -e "process.stdout.write(require('./src-tauri/tauri.conf.json').productName)")
+
+          mkdir -p dist-updater
+
+          # NSIS installer zip
+          NSIS_ZIP=$(ls src-tauri/target/release/bundle/nsis/*_x64-setup.nsis.zip 2>/dev/null | head -1)
+          if [ -n "$NSIS_ZIP" ]; then
+            cp "$NSIS_ZIP" "dist-updater/${APP_NAME}_${VERSION}_x64-setup.nsis.zip"
+            echo "Packaged NSIS: ${APP_NAME}_${VERSION}_x64-setup.nsis.zip"
+          fi
+
+          # MSI installer zip
+          MSI_ZIP=$(ls src-tauri/target/release/bundle/msi/*_x64.msi.zip 2>/dev/null | head -1)
+          if [ -n "$MSI_ZIP" ]; then
+            cp "$MSI_ZIP" "dist-updater/${APP_NAME}_${VERSION}_x64.msi.zip"
+            echo "Packaged MSI: ${APP_NAME}_${VERSION}_x64.msi.zip"
+          fi
+
+          ls -lh dist-updater/
+
+      - name: Sign packages (Windows)
+        if: hashFiles('minisign.key') != ''
+        shell: bash
+        env:
+          MINISIGN_PASSWORD: ${{ secrets.MINISIGN_PASSWORD }}
+        run: |
+          for f in dist-updater/*.zip; do
+            [ -f "$f" ] || continue
+            echo "Signing $f ..."
+            touch minisign.key
+            chmod 600 minisign.key
+            # The minisign key must be stored as a base64-encoded secret
+            echo "${{ secrets.MINISIGN_KEY }}" | base64 -d > minisign.key 2>/dev/null || true
+            if [ -s minisign.key ]; then
+              expect -c "
+                spawn minisign -S -s minisign.key -m $f -x ${f}.minisig
+                expect \"Password:\"
+                send \"$MINISIGN_PASSWORD\r\"
+                expect eof
+              "
+              echo "Signature:"
+              cat "${f}.minisig"
+              echo ""
+              echo "Base64-encoded signature for Worker SIGNATURES:"
+              base64 < "${f}.minisig" | tr -d '\n'
+              echo ""
+            fi
+          done
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-build-${{ github.sha }}
+          path: |
+            dist-updater/*
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 30
