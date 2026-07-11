@@ -42,7 +42,7 @@
         "height": 600,
         "minWidth": 700,
         "minHeight": 480,
-        "dragDropEnabled": false,
+        "dragDropEnabled": true,
         "titleBarStyle": "Overlay"
       }
     ]

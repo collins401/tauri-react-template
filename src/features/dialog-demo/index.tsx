@@ -1,5 +1,19 @@
+import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import {
+  clear,
+  readText,
+  writeText,
+} from "@tauri-apps/plugin-clipboard-manager";
 import { ask, confirm, message, open, save } from "@tauri-apps/plugin-dialog";
+import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
+import {
+  debug,
+  info,
+  error as logError,
+  trace,
+  warn,
+} from "@tauri-apps/plugin-log";
 import {
   requestPermission,
   sendNotification,
@@ -16,13 +30,14 @@ import {
   version,
 } from "@tauri-apps/plugin-os";
 import { relaunch } from "@tauri-apps/plugin-process";
+import Database from "@tauri-apps/plugin-sql";
 import { load as loadStore } from "@tauri-apps/plugin-store";
 import { check } from "@tauri-apps/plugin-updater";
 import { download, upload } from "@tauri-apps/plugin-upload";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 
-type LogEntry = {
+interface LogEntry {
   type: "info" | "success" | "error";
   message: string;
   timestamp: number;
@@ -421,13 +436,127 @@ export function DialogDemoPage() {
     }
   };
 
+  // ── Clipboard ─────────────────────────────────────────────────
+
+  const [clipboardText, setClipboardText] = useState("");
+
+  const handleClipboardWrite = async () => {
+    await writeText(clipboardText || "Hello from Tauri!");
+    addLog("success", "Text written to clipboard");
+  };
+
+  const handleClipboardRead = async () => {
+    const text = await readText();
+    setClipboardText(text);
+    addLog("success", `Clipboard read: ${text.slice(0, 50)}`);
+  };
+
+  const handleClipboardClear = async () => {
+    await clear();
+    addLog("success", "Clipboard cleared");
+  };
+
+  // ── Log ───────────────────────────────────────────────────────
+
+  const handleLogTest = async () => {
+    await trace("This is a TRACE log");
+    await debug("This is a DEBUG log");
+    await info("This is an INFO log");
+    await warn("This is a WARN log");
+    await logError("This is an ERROR log");
+    addLog("success", "Log entries written to file + stdout");
+  };
+
+  // ── Global Shortcut ──────────────────────────────────────────
+
+  const [shortcutActive, setShortcutActive] = useState(false);
+
+  const handleRegisterShortcut = async () => {
+    await register("CmdOrCtrl+Shift+G", (event) => {
+      if (event.state === "Pressed") {
+        addLog("info", `Global shortcut triggered: ${event.shortcut}`);
+      }
+    });
+    setShortcutActive(true);
+    addLog("success", "Global shortcut CmdOrCtrl+Shift+G registered");
+  };
+
+  const handleUnregisterShortcut = async () => {
+    await unregisterAll();
+    setShortcutActive(false);
+    addLog("info", "All global shortcuts unregistered");
+  };
+
+  // ── SQL ──────────────────────────────────────────────────────
+
+  const [sqlResult, setSqlResult] = useState("");
+  const dbRef = useRef<Database | null>(null);
+
+  const getOrInitDb = async () => {
+    if (!dbRef.current) {
+      dbRef.current = await Database.load("sqlite:demo.db");
+      await dbRef.current.execute(
+        "CREATE TABLE IF NOT EXISTS todos (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, done INTEGER DEFAULT 0)"
+      );
+    }
+    return dbRef.current;
+  };
+
+  const handleSqlInsert = async () => {
+    const db = await getOrInitDb();
+    await db.execute("INSERT INTO todos (title) VALUES ($1)", [
+      `Task ${Date.now() % 1000}`,
+    ]);
+    addLog("success", "SQL row inserted");
+    handleSqlQuery();
+  };
+
+  const handleSqlQuery = async () => {
+    const db = await getOrInitDb();
+    const rows = await db.select<{ id: number; title: string; done: number }[]>(
+      "SELECT * FROM todos ORDER BY id DESC LIMIT 5"
+    );
+    setSqlResult(JSON.stringify(rows, null, 2));
+    addLog("info", `SQL query: ${rows.length} rows`);
+  };
+
+  const handleSqlClear = async () => {
+    const db = await getOrInitDb();
+    await db.execute("DELETE FROM todos");
+    setSqlResult("");
+    addLog("success", "SQL table cleared");
+  };
+
+  // ── Drag & Drop ──────────────────────────────────────────────
+
+  const [droppedFiles, setDroppedFiles] = useState<string[]>([]);
+
+  useEffect(() => {
+    const unlisten = getCurrentWebviewWindow().onDragDropEvent((event) => {
+      if (event.payload.type === "over") {
+        // Visual feedback can be added here
+      } else if (event.payload.type === "drop") {
+        const { paths } = event.payload;
+        setDroppedFiles(paths);
+        addLog(
+          "success",
+          `${paths.length} file(s) dropped:\n${paths.join("\n")}`
+        );
+      }
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, []);
+
   return (
     <div className="h-screen overflow-auto p-8">
       <div className="mx-auto max-w-2xl space-y-8">
         <div>
           <h1 className="font-bold text-2xl">Tauri Plugins Demo</h1>
           <p className="text-muted-foreground text-xs">
-            dialog · upload · updater · os · store · notification · http
+            dialog · upload · updater · os · store · notification · http ·
+            clipboard · log · shortcut · sql
           </p>
         </div>
 
@@ -598,6 +727,81 @@ export function DialogDemoPage() {
           {httpResponse && (
             <div className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs">
               {httpResponse}
+            </div>
+          )}
+        </Section>
+
+        <Section title="Clipboard">
+          <div className="flex flex-wrap items-end gap-2">
+            <input
+              className="w-48 rounded-md border bg-background px-3 py-1.5 text-sm"
+              onChange={(e) => setClipboardText(e.target.value)}
+              placeholder="Text to copy"
+              value={clipboardText}
+            />
+            <Button onClick={handleClipboardWrite} size="sm">
+              Write
+            </Button>
+            <Button onClick={handleClipboardRead} size="sm" variant="secondary">
+              Read
+            </Button>
+            <Button onClick={handleClipboardClear} size="sm" variant="outline">
+              Clear
+            </Button>
+          </div>
+        </Section>
+
+        <Section title="Log">
+          <Button onClick={handleLogTest}>Write Test Logs</Button>
+          <span className="self-center text-muted-foreground text-xs">
+            Output: stdout + app data dir
+          </span>
+        </Section>
+
+        <Section title="Global Shortcut">
+          <Button disabled={shortcutActive} onClick={handleRegisterShortcut}>
+            Register CmdOrCtrl+Shift+G
+          </Button>
+          <Button
+            disabled={!shortcutActive}
+            onClick={handleUnregisterShortcut}
+            variant="outline"
+          >
+            Unregister
+          </Button>
+          <span className="self-center text-muted-foreground text-xs">
+            Press even when app is in background
+          </span>
+        </Section>
+
+        <Section title="SQL (SQLite)">
+          <div className="flex flex-wrap gap-2">
+            <Button onClick={handleSqlInsert} size="sm">
+              Insert Task
+            </Button>
+            <Button onClick={handleSqlQuery} size="sm" variant="secondary">
+              Query Todos
+            </Button>
+            <Button onClick={handleSqlClear} size="sm" variant="outline">
+              Clear Table
+            </Button>
+          </div>
+          {sqlResult && (
+            <div className="max-h-32 overflow-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-2 font-mono text-xs">
+              {sqlResult}
+            </div>
+          )}
+        </Section>
+
+        <Section title="Drag & Drop">
+          <div className="flex h-20 w-full items-center justify-center rounded-md border-2 border-dashed text-muted-foreground text-sm">
+            Drop files anywhere on the window
+          </div>
+          {droppedFiles.length > 0 && (
+            <div className="max-h-24 overflow-auto rounded-md border bg-muted/30 p-2 font-mono text-xs">
+              {droppedFiles.map((f) => (
+                <div key={f}>{f}</div>
+              ))}
             </div>
           )}
         </Section>
