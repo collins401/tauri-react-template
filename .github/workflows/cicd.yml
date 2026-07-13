@@ -54,14 +54,14 @@ jobs:
           mkdir -p dist-updater
 
           # NSIS installer zip
-          NSIS_ZIP=$(ls src-tauri/target/release/bundle/nsis/*_x64-setup.nsis.zip 2>/dev/null | head -1)
+          NSIS_ZIP=$(find src-tauri/target/release/bundle/nsis -name '*_x64-setup.nsis.zip' 2>/dev/null | head -1)
           if [ -n "$NSIS_ZIP" ]; then
             cp "$NSIS_ZIP" "dist-updater/${APP_NAME}_${VERSION}_x64-setup.nsis.zip"
             echo "Packaged NSIS: ${APP_NAME}_${VERSION}_x64-setup.nsis.zip"
           fi
 
           # MSI installer zip
-          MSI_ZIP=$(ls src-tauri/target/release/bundle/msi/*_x64.msi.zip 2>/dev/null | head -1)
+          MSI_ZIP=$(find src-tauri/target/release/bundle/msi -name '*_x64.msi.zip' 2>/dev/null | head -1)
           if [ -n "$MSI_ZIP" ]; then
             cp "$MSI_ZIP" "dist-updater/${APP_NAME}_${VERSION}_x64.msi.zip"
             echo "Packaged MSI: ${APP_NAME}_${VERSION}_x64.msi.zip"
