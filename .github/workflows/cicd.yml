@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    environment: prod
     strategy:
       matrix:
         os: [windows-latest]
@@ -43,6 +44,9 @@ jobs:
           workspaces: src-tauri
 
       - name: Build Tauri app
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build
 
       - name: Package for updater (Windows)
